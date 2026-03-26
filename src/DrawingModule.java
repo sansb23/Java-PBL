@@ -1,6 +1,7 @@
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.paint.Color;
+import javafx.scene.shape.StrokeLineCap;
 
 public class DrawingModule {
     private Canvas canvas;
@@ -11,14 +12,14 @@ public class DrawingModule {
         this.canvas = new Canvas(width, height);
         this.gc = canvas.getGraphicsContext2D();
         
-        // Set pen style - Cyan shows up well over the camera feed
+        // Neon Cyan for high visibility
         gc.setStroke(Color.CYAN); 
-        gc.setLineWidth(5);
+        gc.setLineWidth(6);
+        gc.setLineCap(StrokeLineCap.ROUND); 
     }
 
     public void updatePoints(int cx, int cy) {
         if (lastX != -1 && lastY != -1) {
-            // Draws line between the last point and current point
             gc.strokeLine(lastX, lastY, cx, cy);
         }
         lastX = cx;
@@ -26,7 +27,6 @@ public class DrawingModule {
     }
 
     public void resetTracking() {
-        // Essential: stops the "connect-the-dots" line when marker is hidden
         lastX = -1;
         lastY = -1;
     }
