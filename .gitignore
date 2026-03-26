@@ -1,0 +1,14 @@
+# Compiled files
+out/
+*.class
+
+# OpenCV DLL (too large, everyone downloads their own)
+*.dll
+*.so
+
+# VS Code personal settings
+.vscode/launch.json
+
+# OS junk
+.DS_Store
+Thumbs.db
