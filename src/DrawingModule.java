@@ -1,46 +1,41 @@
-import org.opencv.core.*;
-import org.opencv.videoio.VideoCapture;
-import javafx.application.Application;
-import javafx.scene.Scene;
-import javafx.scene.image.ImageView;
-import javafx.scene.layout.StackPane;
-import javafx.stage.Stage;
+import javafx.scene.canvas.Canvas;
+import javafx.scene.canvas.GraphicsContext;
+import javafx.scene.paint.Color;
 
-public class DrawingModule extends Application {
+public class DrawingModule {
+    private Canvas canvas;
+    private GraphicsContext gc;
+    private double lastX = -1, lastY = -1;
 
-    static {
-        System.load("C:\\opencv\\build\\java\\x64\\opencv_java490.dll");
+    public DrawingModule(double width, double height) {
+        this.canvas = new Canvas(width, height);
+        this.gc = canvas.getGraphicsContext2D();
+        
+        // Set pen style - Cyan shows up well over the camera feed
+        gc.setStroke(Color.CYAN); 
+        gc.setLineWidth(5);
     }
 
-    @Override
-    public void start(Stage stage) {
-        ImageView imageView = new ImageView();
-        StackPane root = new StackPane(imageView);
-        stage.setScene(new Scene(root, 640, 480));
-        stage.setTitle("AirDraw - Drawing Module");
-        stage.show();
-
-        VideoCapture camera = new VideoCapture(0);
-
-        AnimationTimer timer = new AnimationTimer() {
-            @Override
-            public void handle(long now) {
-                Mat frame = new Mat();
-                if (camera.read(frame)) {
-                    // Detect colored markers using OpenCV and draw lines or shapes based on their
-positions...
-                }
-            }
-        };
-        timer.start();
-
-        stage.setOnCloseRequest(e -> {
-            timer.stop();
-            camera.release();
-        });
+    public void updatePoints(int cx, int cy) {
+        if (lastX != -1 && lastY != -1) {
+            // Draws line between the last point and current point
+            gc.strokeLine(lastX, lastY, cx, cy);
+        }
+        lastX = cx;
+        lastY = cy;
     }
 
-    public static void main(String[] args) {
-        launch(args);
+    public void resetTracking() {
+        // Essential: stops the "connect-the-dots" line when marker is hidden
+        lastX = -1;
+        lastY = -1;
+    }
+
+    public void clearCanvas() {
+        gc.clearRect(0, 0, canvas.getWidth(), canvas.getHeight());
+    }
+
+    public Canvas getCanvas() {
+        return canvas;
     }
 }
