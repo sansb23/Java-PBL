@@ -133,6 +133,7 @@ Main.java
 4. Click **Commit to main**
 5. Click **Push origin**
 
+
 ### Rules:
 - **Each person works only in their own `.java` file** — avoids merge conflicts
 - Never edit someone else's file without telling them
