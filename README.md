@@ -27,7 +27,7 @@ java-pbl/
 │   ├── UIModule.java           ← Module 3: buttons and UI layout
 │   └── Main.java               ← entry point, connects all modules
 ├── lib/
-│   └── opencv-4120.jar         ← OpenCV Java bindings (required)
+│   └── opencv-4120.jar         ← OpenCV Java bindings ( required )
 ├── .gitignore
 └── README.md
 ```
