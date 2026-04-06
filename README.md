@@ -1,6 +1,6 @@
 # AirDraw — Gesture-Controlled Virtual Drawing Board
 
-**Team:** Avengers | GEHU B.Tech CSE  
+**Team:** India | GEHU B.Tech CSE  
 **Language:** Java | **GUI:** JavaFX | **Vision:** OpenCV
 
 > Draw in the air using a colored marker — no mouse, no touch, just a webcam.
