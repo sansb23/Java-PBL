@@ -1,0 +1,471 @@
+import javafx.application.Application;
+import javafx.application.Platform;
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
+import javafx.scene.Scene;
+import javafx.scene.canvas.Canvas;
+import javafx.scene.canvas.GraphicsContext;
+import javafx.scene.control.Button;
+import javafx.scene.control.Label;
+import javafx.scene.effect.DropShadow;
+import javafx.scene.image.ImageView;
+import javafx.scene.layout.*;
+import javafx.scene.paint.Color;
+import javafx.scene.shape.Circle;
+import javafx.scene.shape.Rectangle;
+import javafx.scene.text.Font;
+import javafx.scene.text.FontWeight;
+import javafx.scene.text.FontPosture;
+import javafx.scene.SnapshotParameters;
+import javafx.scene.image.WritableImage;
+import javafx.embed.swing.SwingFXUtils;
+import javafx.stage.Stage;
+import javafx.animation.FadeTransition;
+import javafx.animation.ScaleTransition;
+import javafx.animation.Timeline;
+import javafx.util.Duration;
+
+import javax.imageio.ImageIO;
+import java.io.File;
+import java.io.IOException;
+
+/**
+ *  Gesture-Controlled Virtual Drawing Board
+ *  UI Module — DrawingBoard.java  
+**/
+public class DrawingBoard extends Application {
+
+    // ── Canvas & Drawing ──────────────────────────
+    private Canvas drawingCanvas;
+    private GraphicsContext gc;
+
+    // ── Webcam feed (Detection Person fills this) ─
+    public ImageView webcamView;
+
+    // ── Drawing state (Logic Person uses these) ───
+    private double lastX = -1;
+    private double lastY = -1;
+
+    // ── UI label references ───────────────────────
+    private Label statusLabel;
+    private Label coordLabel;
+    private Label detectionLabel;
+    private Label fpsLabel;
+
+    // ── Color theme ───────────────────────────────
+    private static final String BG_DEEP       = "#080B14";
+    private static final String BG_PANEL      = "#0D1117";
+    private static final String BG_CARD       = "#161B27";
+    private static final String ACCENT_CYAN   = "#00E5FF";
+    private static final String ACCENT_GREEN  = "#00FF88";
+    private static final String TEXT_PRIMARY  = "#E8EAF0";
+    private static final String TEXT_MUTED    = "#6B7280";
+    private static final String BORDER_COLOR  = "#1F2937";
+
+    // Currently selected brush color
+    private String brushColor = ACCENT_CYAN;
+
+    @Override
+    public void start(Stage primaryStage) {
+
+        // Build each section
+        HBox header      = createHeader();
+        VBox sidebar     = createSidebar();
+        HBox statusBar   = createStatusBar();
+
+        // Drawing canvas
+        drawingCanvas = new Canvas(610, 470);
+        gc = drawingCanvas.getGraphicsContext2D();
+        clearCanvas();
+
+        StackPane canvasWrapper = new StackPane(drawingCanvas);
+        canvasWrapper.setStyle(
+            "-fx-background-color: #080B14;" +
+            "-fx-border-color: #00E5FF33;" +
+            "-fx-border-width: 1;" +
+            "-fx-border-radius: 10;" +
+            "-fx-background-radius: 10;"
+        );
+        DropShadow canvasGlow = new DropShadow();
+        canvasGlow.setColor(Color.web(ACCENT_CYAN, 0.12));
+        canvasGlow.setRadius(24);
+        canvasWrapper.setEffect(canvasGlow);
+
+        // Main content row: sidebar + canvas
+        HBox mainContent = new HBox(12);
+        mainContent.setPadding(new Insets(0, 16, 12, 16));
+        HBox.setHgrow(canvasWrapper, Priority.ALWAYS);
+        mainContent.getChildren().addAll(sidebar, canvasWrapper);
+
+        // Root
+        VBox root = new VBox(0);
+        root.setStyle("-fx-background-color: " + BG_DEEP + ";");
+        root.getChildren().addAll(header, mainContent, statusBar);
+
+        // Fade-in on launch
+        root.setOpacity(0);
+        Scene scene = new Scene(root, 1020, 618);
+        scene.setFill(Color.web(BG_DEEP));
+        primaryStage.setTitle("Gesture Drawing Board");
+        primaryStage.setScene(scene);
+        primaryStage.setResizable(false);
+        primaryStage.show();
+
+        FadeTransition fadeIn = new FadeTransition(Duration.millis(500), root);
+        fadeIn.setFromValue(0); fadeIn.setToValue(1);
+        fadeIn.play();
+
+        setStatus("READY", ACCENT_GREEN);
+    }
+
+
+    // ═══════════════════════════════════════════════════════
+    //  HEADER
+    // ═══════════════════════════════════════════════════════
+
+    private HBox createHeader() {
+
+        // Pulsing dot logo
+        Circle dot = new Circle(5, Color.web(ACCENT_CYAN));
+        DropShadow glow = new DropShadow(10, Color.web(ACCENT_CYAN, 0.9));
+        dot.setEffect(glow);
+        ScaleTransition pulse = new ScaleTransition(Duration.seconds(1.4), dot);
+        pulse.setFromX(1.0); pulse.setToX(1.5);
+        pulse.setFromY(1.0); pulse.setToY(1.5);
+        pulse.setAutoReverse(true);
+        pulse.setCycleCount(Timeline.INDEFINITE);
+        pulse.play();
+
+        Label title = new Label("GESTURE BOARD");
+        title.setFont(Font.font("Courier New", FontWeight.BOLD, 14));
+        title.setTextFill(Color.web(TEXT_PRIMARY));
+
+        Label tag = new Label("v1.0");
+        tag.setFont(Font.font("Courier New", 10));
+        tag.setTextFill(Color.web(ACCENT_CYAN));
+        tag.setStyle(
+            "-fx-background-color: #00E5FF18;" +
+            "-fx-border-color: #00E5FF44;" +
+            "-fx-border-width: 1; -fx-border-radius: 4;" +
+            "-fx-background-radius: 4; -fx-padding: 2 7 2 7;"
+        );
+
+        HBox left = new HBox(10, dot, title, tag);
+        left.setAlignment(Pos.CENTER_LEFT);
+
+        // Mode pills (center)
+        HBox center = new HBox(8,
+            modePill("● LIVE",   ACCENT_GREEN, true),
+            modePill("○ DETECT", TEXT_MUTED,   false),
+            modePill("○ DRAW",   TEXT_MUTED,   false)
+        );
+        center.setAlignment(Pos.CENTER);
+
+        // Buttons (right)
+        Button clearBtn = headerBtn("⌫  CLEAR", "#EF4444");
+        clearBtn.setOnAction(e -> { clearCanvas(); setStatus("CANVAS CLEARED", "#EF4444"); });
+
+        Button saveBtn  = headerBtn("↓  SAVE",  ACCENT_CYAN);
+        saveBtn.setOnAction(e -> saveCanvasAsImage());
+
+        Button exitBtn  = headerBtn("✕  EXIT",  TEXT_MUTED);
+        exitBtn.setOnAction(e -> Platform.exit());
+
+        HBox right = new HBox(8, clearBtn, saveBtn, exitBtn);
+        right.setAlignment(Pos.CENTER_RIGHT);
+
+        Region s1 = new Region(); HBox.setHgrow(s1, Priority.ALWAYS);
+        Region s2 = new Region(); HBox.setHgrow(s2, Priority.ALWAYS);
+
+        HBox header = new HBox(0, left, s1, center, s2, right);
+        header.setPadding(new Insets(13, 20, 13, 20));
+        header.setAlignment(Pos.CENTER_LEFT);
+        header.setStyle(
+            "-fx-background-color: " + BG_PANEL + ";" +
+            "-fx-border-color: transparent transparent " + BORDER_COLOR + " transparent;" +
+            "-fx-border-width: 0 0 1 0;"
+        );
+        return header;
+    }
+
+    private Label modePill(String text, String color, boolean active) {
+        Label l = new Label(text);
+        l.setFont(Font.font("Courier New", FontWeight.BOLD, 10));
+        l.setTextFill(Color.web(color));
+        l.setStyle(
+            "-fx-background-color: " + color + (active ? "22" : "11") + ";" +
+            "-fx-border-color: "     + color + (active ? "55" : "22") + ";" +
+            "-fx-border-width: 1; -fx-border-radius: 20;" +
+            "-fx-background-radius: 20; -fx-padding: 3 10 3 10;"
+        );
+        return l;
+    }
+
+    private Button headerBtn(String text, String color) {
+        Button b = new Button(text);
+        b.setFont(Font.font("Courier New", FontWeight.BOLD, 11));
+        b.setTextFill(Color.web(color));
+        String base = "-fx-border-width:1;-fx-border-radius:6;-fx-background-radius:6;-fx-padding:6 14 6 14;-fx-cursor:hand;";
+        b.setStyle("-fx-background-color:" + color + "15;-fx-border-color:" + color + "40;" + base);
+        b.setOnMouseEntered(e -> b.setStyle("-fx-background-color:" + color + "30;-fx-border-color:" + color + "80;" + base));
+        b.setOnMouseExited (e -> b.setStyle("-fx-background-color:" + color + "15;-fx-border-color:" + color + "40;" + base));
+        return b;
+    }
+
+
+    // ═══════════════════════════════════════════════════════
+    //  SIDEBAR
+    // ═══════════════════════════════════════════════════════
+
+    private VBox createSidebar() {
+
+        // Section label
+        Label camTitle = sectionLabel("CAMERA FEED");
+
+        // Webcam view
+        webcamView = new ImageView();
+        webcamView.setFitWidth(300);
+        webcamView.setFitHeight(220);
+        webcamView.setPreserveRatio(true);
+
+        Label noSignal = new Label("[ NO SIGNAL ]");
+        noSignal.setFont(Font.font("Courier New", 11));
+        noSignal.setTextFill(Color.web(TEXT_MUTED));
+        FadeTransition blink = new FadeTransition(Duration.seconds(1.2), noSignal);
+        blink.setFromValue(1.0); blink.setToValue(0.25);
+        blink.setAutoReverse(true); blink.setCycleCount(Timeline.INDEFINITE);
+        blink.play();
+
+        StackPane camBox = new StackPane(noSignal, webcamView);
+        camBox.setPrefSize(300, 220);
+        camBox.setStyle(
+            "-fx-background-color: #060910;" +
+            "-fx-border-color: " + BORDER_COLOR + ";" +
+            "-fx-border-width: 1; -fx-border-radius: 8;" +
+            "-fx-background-radius: 8;"
+        );
+
+        // Cyan corner accents
+        Rectangle cH = new Rectangle(18, 2); cH.setFill(Color.web(ACCENT_CYAN));
+        Rectangle cV = new Rectangle(2, 18);  cV.setFill(Color.web(ACCENT_CYAN));
+        StackPane.setAlignment(cH, Pos.TOP_LEFT);
+        StackPane.setAlignment(cV, Pos.TOP_LEFT);
+        camBox.getChildren().addAll(cH, cV);
+
+        // ── Detection data card ───────────────────
+        detectionLabel = dataRow("COLOR", "—");
+        coordLabel     = dataRow("POSITION", "X:0  Y:0");
+        fpsLabel       = dataRow("FPS", "—");
+
+        Rectangle div = new Rectangle(276, 1);
+        div.setFill(Color.web(BORDER_COLOR));
+
+        VBox infoCard = new VBox(9,
+            sectionLabel("DETECTION DATA"), div,
+            detectionLabel, coordLabel, fpsLabel
+        );
+        infoCard.setPadding(new Insets(12));
+        infoCard.setStyle(cardStyle());
+
+        // ── Brush color swatches ──────────────────
+        String[] swatchColors = {ACCENT_CYAN, ACCENT_GREEN, "#FF6B6B", "#FFD93D", "#C77DFF", "#FFFFFF"};
+        HBox swatches = new HBox(10);
+        swatches.setAlignment(Pos.CENTER_LEFT);
+
+        for (String col : swatchColors) {
+            Circle c = new Circle(10, Color.web(col));
+            if (col.equals(brushColor)) {
+                c.setStroke(Color.web(TEXT_PRIMARY));
+                c.setStrokeWidth(2.5);
+            }
+            c.setOnMouseClicked(e -> {
+                brushColor = col;
+                setStatus("BRUSH: " + col, col);
+                // Reset all strokes then highlight selected
+                swatches.getChildren().forEach(node -> {
+                    if (node instanceof Circle) {
+                        ((Circle) node).setStroke(null);
+                        ((Circle) node).setStrokeWidth(0);
+                    }
+                });
+                c.setStroke(Color.web(TEXT_PRIMARY));
+                c.setStrokeWidth(2.5);
+            });
+            c.setOnMouseEntered(e -> c.setScaleX(1.25));
+            c.setOnMouseExited (e -> c.setScaleX(1.0));
+            swatches.getChildren().add(c);
+        }
+
+        VBox colorCard = new VBox(9, sectionLabel("BRUSH COLOR"), swatches);
+        colorCard.setPadding(new Insets(12));
+        colorCard.setStyle(cardStyle());
+
+        // ── Assemble ──────────────────────────────
+        VBox sidebar = new VBox(12, camTitle, camBox, infoCard, colorCard);
+        sidebar.setPrefWidth(324);
+        sidebar.setMinWidth(324);
+        sidebar.setMaxWidth(324);
+        return sidebar;
+    }
+
+    private String cardStyle() {
+        return "-fx-background-color:" + BG_CARD + ";" +
+               "-fx-border-color:" + BORDER_COLOR + ";" +
+               "-fx-border-width:1;-fx-border-radius:8;-fx-background-radius:8;";
+    }
+
+    private Label sectionLabel(String text) {
+        Label l = new Label(text);
+        l.setFont(Font.font("Courier New", FontWeight.BOLD, 10));
+        l.setTextFill(Color.web(TEXT_MUTED));
+        return l;
+    }
+
+    private Label dataRow(String key, String val) {
+        Label l = new Label(String.format("%-10s%s", key, val));
+        l.setFont(Font.font("Courier New", 12));
+        l.setTextFill(Color.web(TEXT_PRIMARY));
+        return l;
+    }
+
+
+    // ═══════════════════════════════════════════════════════
+    //  STATUS BAR
+    // ═══════════════════════════════════════════════════════
+
+    private HBox createStatusBar() {
+        statusLabel = new Label("● READY");
+        statusLabel.setFont(Font.font("Courier New", FontWeight.BOLD, 11));
+        statusLabel.setTextFill(Color.web(ACCENT_GREEN));
+
+        Label sep = new Label("|");
+        sep.setFont(Font.font("Courier New", 11));
+        sep.setTextFill(Color.web(BORDER_COLOR));
+
+        Label info = new Label("JDK 23  •  JavaFX 25.0.2  •  OpenCV pending");
+        info.setFont(Font.font("Courier New", 11));
+        info.setTextFill(Color.web(TEXT_MUTED));
+
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+        Label hint = new Label("Hold a colored marker in front of webcam to draw");
+        hint.setFont(Font.font("Courier New", FontPosture.ITALIC, 11));
+        hint.setTextFill(Color.web(TEXT_MUTED));
+
+        HBox bar = new HBox(10, statusLabel, sep, info, spacer, hint);
+        bar.setPadding(new Insets(8, 20, 8, 20));
+        bar.setAlignment(Pos.CENTER_LEFT);
+        bar.setStyle(
+            "-fx-background-color:" + BG_PANEL + ";" +
+            "-fx-border-color:" + BORDER_COLOR + " transparent transparent transparent;" +
+            "-fx-border-width:1 0 0 0;"
+        );
+        return bar;
+    }
+
+
+    // ═══════════════════════════════════════════════════════
+    //  CANVAS OPERATIONS — Logic Person calls these
+    // ═══════════════════════════════════════════════════════
+
+    /**
+     * Clears canvas and draws a subtle background grid.
+     */
+    public void clearCanvas() {
+        gc.setFill(Color.web(BG_DEEP));
+        gc.fillRect(0, 0, drawingCanvas.getWidth(), drawingCanvas.getHeight());
+        // Subtle dot grid
+        gc.setFill(Color.web("#1A1F2E"));
+        for (int x = 20; x < 610; x += 25) {
+            for (int y = 20; y < 470; y += 25) {
+                gc.fillOval(x - 1, y - 1, 2, 2);
+            }
+        }
+        lastX = -1;
+        lastY = -1;
+    }
+
+    /**
+     * MAIN DRAWING METHOD — Logic Person calls this.
+     * Draws a smooth line from the last point to (x, y).
+     */
+    public void drawPoint(double x, double y) {
+        Platform.runLater(() -> {
+            if (lastX == -1 && lastY == -1) {
+                lastX = x; lastY = y;
+            } else {
+                gc.setStroke(Color.web(brushColor));
+                gc.setLineWidth(3.5);
+                gc.setLineCap(javafx.scene.shape.StrokeLineCap.ROUND);
+                gc.setLineJoin(javafx.scene.shape.StrokeLineJoin.ROUND);
+                gc.strokeLine(lastX, lastY, x, y);
+                lastX = x; lastY = y;
+            }
+            coordLabel.setText(String.format("%-10sX:%-4.0f Y:%.0f", "POSITION", x, y));
+        });
+    }
+
+    /**
+     * Call when marker is lost — breaks the current line.
+     * Logic Person calls this when no object is detected.
+     */
+    public void stopDrawing() {
+        lastX = -1;
+        lastY = -1;
+    }
+
+    /**
+     * Updates detection info in the sidebar.
+     * Detection Person calls this each frame.
+     *
+     * @param colorName  detected color name e.g. "RED"
+     * @param fps        current frames per second
+     */
+    public void updateDetectionInfo(String colorName, int fps) {
+        Platform.runLater(() -> {
+            detectionLabel.setText(String.format("%-10s%s", "COLOR", colorName));
+            fpsLabel.setText(String.format("%-10s%d", "FPS", fps));
+        });
+    }
+
+
+    // ═══════════════════════════════════════════════════════
+    //  SAVE
+    // ═══════════════════════════════════════════════════════
+
+    private void saveCanvasAsImage() {
+        try {
+            WritableImage snapshot = new WritableImage(
+                (int) drawingCanvas.getWidth(),
+                (int) drawingCanvas.getHeight()
+            );
+            drawingCanvas.snapshot(new SnapshotParameters(), snapshot);
+            String path = System.getProperty("user.home") + "/Desktop/gesture_drawing.png";
+            ImageIO.write(SwingFXUtils.fromFXImage(snapshot, null), "png", new File(path));
+            setStatus("SAVED → Desktop/gesture_drawing.png", ACCENT_CYAN);
+        } catch (IOException e) {
+            setStatus("SAVE FAILED", "#EF4444");
+        }
+    }
+
+
+    // ═══════════════════════════════════════════════════════
+    //  UTILITIES
+    // ═══════════════════════════════════════════════════════
+
+    public void setStatus(String message, String color) {
+        Platform.runLater(() -> {
+            statusLabel.setText("● " + message);
+            statusLabel.setTextFill(Color.web(color));
+        });
+    }
+
+    public void setStatus(String message) {
+        setStatus(message, ACCENT_GREEN);
+    }
+
+    public GraphicsContext getGraphicsContext() { return gc; }
+
+    public static void main(String[] args) { launch(args); }
+}

@@ -21,6 +21,8 @@ public class DrawingModule {
     public void updatePoints(int cx, int cy) {
         if (lastX != -1 && lastY != -1) {
             gc.strokeLine(lastX, lastY, cx, cy);
+
+            
         }
         lastX = cx;
         lastY = cy;
